@@ -1,0 +1,64 @@
+name: CI - PR & Merge Analysis
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # Ví dụ cho project Node.js (bạn có thể xoá hoặc chỉnh nếu dùng tech khác)
+      - name: Setup Node (nếu có dùng Node)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+        if: hashFiles('**/package.json') != ''
+
+      - name: Install dependencies (Node)
+        if: hashFiles('**/package.json') != ''
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          elif [ -f pnpm-lock.yaml ]; then
+            npm install -g pnpm
+            pnpm install
+          elif [ -f yarn.lock ]; then
+            npm install -g yarn
+            yarn install
+          else
+            npm install
+          fi
+
+      - name: Run lint & test (Node) - chỉnh lệnh theo project của bạn
+        if: hashFiles('**/package.json') != ''
+        run: |
+          if npm run | grep -q "lint"; then
+            npm run lint
+          else
+            echo "Không có script lint, bỏ qua bước lint"
+          fi
+
+          if npm run | grep -q "test"; then
+            npm test
+          else
+            echo "Không có script test, bỏ qua bước test"
+          fi
+
+      # Bước phân tích generic (bạn có thể đổi thành build, sonar, dotnet test, mvn test, v.v.)
+      - name: Custom analysis / build
+        run: |
+          echo "Thêm lệnh phân tích/builđ của project bạn tại đây."
+          echo "Ví dụ:"
+          echo "- .NET: dotnet restore && dotnet test"
+          echo "- Java: mvn clean verify"
+          echo "- Python: pip install -r requirements.txt && pytest"
+
+

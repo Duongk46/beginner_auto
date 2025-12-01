@@ -1,0 +1,96 @@
+name: Achievement Helper
+
+# Workflow này giúp bạn đạt GitHub Achievements bằng cách tự động tạo issues/PRs nhỏ
+# CHỈ SỬ DỤNG TRONG REPO TEST CỦA BẠN!
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to perform"
+        required: true
+        type: choice
+        options:
+          - create-issue
+          - create-pr
+          - close-issue
+  schedule:
+    # Chạy tự động mỗi ngày lúc 00:00 UTC (tùy chọn)
+    - cron: "0 0 * * *"
+
+jobs:
+  achievement-helper:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Issue
+        if: github.event.inputs.action == 'create-issue' || github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueTitle = `Achievement Helper: Issue ${Date.now()}`;
+            const issueBody = `This is an automated issue created to help achieve GitHub achievements.\n\n- [ ] Task 1\n- [ ] Task 2`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: ['achievement-helper', 'good first issue']
+            });
+
+      - name: Create PR
+        if: github.event.inputs.action == 'create-pr'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchName = `achievement-helper-${Date.now()}`;
+            const prTitle = `Achievement Helper: PR ${Date.now()}`;
+            const prBody = `This is an automated PR created to help achieve GitHub achievements.`;
+
+            // Create branch
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/heads/${branchName}`,
+              sha: context.sha
+            });
+
+            // Create PR
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: prTitle,
+              body: prBody,
+              head: branchName,
+              base: 'main'
+            });
+
+      - name: Close Old Issues
+        if: github.event.inputs.action == 'close-issue' || github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'achievement-helper'
+            });
+
+            // Close issues older than 1 day
+            for (const issue of issues.data.slice(0, 5)) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
