@@ -2,9 +2,9 @@ name: CI - PR & Merge Analysis
 
 on:
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master, dev]
   push:
-    branches: [ main, master ]
+    branches: [main, master, dev]
 
 jobs:
   analyze:
@@ -61,4 +61,86 @@ jobs:
           echo "- Java: mvn clean verify"
           echo "- Python: pip install -r requirements.txt && pytest"
 
+  notify-discord:
+    needs: analyze
+    runs-on: ubuntu-latest
+    if: always() # Chạy dù CI pass hay fail
+    steps:
+      - name: Send Discord Notification
+        if: secrets.DISCORD_WEBHOOK != ''
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          # Xác định trạng thái
+          ANALYZE_STATUS="${{ needs.analyze.result }}"
+          if [ "$ANALYZE_STATUS" = "success" ]; then
+            COLOR="3066993"
+            EMOJI="✅"
+            STATUS_TEXT="**PASSED** - Tất cả kiểm tra đã thành công"
+          else
+            COLOR="15158332"
+            EMOJI="❌"
+            STATUS_TEXT="**FAILED** - Có lỗi trong quá trình phân tích"
+          fi
 
+          # Lấy thông tin PR hoặc Push
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+            PR_SOURCE_BRANCH="${{ github.head_ref }}"
+            PR_TARGET_BRANCH="${{ github.base_ref }}"
+            PR_URL="${{ github.event.pull_request.html_url }}"
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            EVENT_TYPE="Pull Request"
+            EVENT_DETAIL="PR #${PR_NUMBER} → \`${PR_TARGET_BRANCH}\`"
+            BRANCH_INFO="Source: \`${PR_SOURCE_BRANCH}\` → Target: \`${PR_TARGET_BRANCH}\`"
+          else
+            PR_TITLE="Push to ${{ github.ref_name }}"
+            PR_AUTHOR="${{ github.actor }}"
+            PR_SOURCE_BRANCH="${{ github.ref_name }}"
+            PR_TARGET_BRANCH="${{ github.ref_name }}"
+            PR_URL="${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref_name }}"
+            PR_NUMBER=""
+            EVENT_TYPE="Push"
+            EVENT_DETAIL="Push to \`${{ github.ref_name }}\`"
+            BRANCH_INFO="Branch: \`${{ github.ref_name }}\`"
+          fi
+
+          WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_SHORT="${COMMIT_SHA:0:7}"
+
+          # Tạo embed message
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"${EMOJI} ${EVENT_TYPE} Analysis Result\",
+                \"description\": \"**${EVENT_DETAIL}**\\n**Title:** ${PR_TITLE}\\n**Author:** ${PR_AUTHOR}\\n**${BRANCH_INFO}**\\n**Status:** ${STATUS_TEXT}\",
+                \"color\": ${COLOR},
+                \"fields\": [
+                  {
+                    \"name\": \"Repository\",
+                    \"value\": \"[${{ github.repository }}](${{ github.server_url }}/${{ github.repository }})\",
+                    \"inline\": true
+                  },
+                  {
+                    \"name\": \"Commit\",
+                    \"value\": \"[\`${COMMIT_SHORT}\`](${{ github.server_url }}/${{ github.repository }}/commit/${COMMIT_SHA})\",
+                    \"inline\": true
+                  },
+                  {
+                    \"name\": \"Workflow Run\",
+                    \"value\": \"[View Details](${WORKFLOW_URL})\",
+                    \"inline\": true
+                  }
+                ],
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+                \"footer\": {
+                  \"text\": \"GitHub Actions • ${{ github.workflow }}\",
+                  \"icon_url\": \"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png\"
+                },
+                \"url\": \"${PR_URL}\"
+              }]
+            }" \
+            "$DISCORD_WEBHOOK" || echo "Failed to send Discord notification"
