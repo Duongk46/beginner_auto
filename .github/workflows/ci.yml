@@ -67,10 +67,14 @@ jobs:
     if: always() # Chạy dù CI pass hay fail
     steps:
       - name: Send Discord Notification
-        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
+          # Kiểm tra nếu không có webhook thì bỏ qua
+          if [ -z "$DISCORD_WEBHOOK" ] || [ "$DISCORD_WEBHOOK" = "" ]; then
+            echo "Discord webhook not configured, skipping notification"
+            exit 0
+          fi
           # Xác định trạng thái
           ANALYZE_STATUS="${{ needs.analyze.result }}"
           if [ "$ANALYZE_STATUS" = "success" ]; then
