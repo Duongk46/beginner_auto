@@ -67,7 +67,7 @@ jobs:
     if: always() # Chạy dù CI pass hay fail
     steps:
       - name: Send Discord Notification
-        if: secrets.DISCORD_WEBHOOK != ''
+        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
